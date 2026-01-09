@@ -1,0 +1,7 @@
+{
+  "name": "領収書ポケット (Receipt Pocket)",
+  "description": "一般ユーザーが領収書をスマートに管理・整理し、経理担当者へ簡単に共有できるパステルカラーで親しみやすいアプリ。AI（Gemini）による自動解析機能を搭載。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
