@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Wrangler local development files
+.wrangler/
+.dev.vars
