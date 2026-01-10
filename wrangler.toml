@@ -1,0 +1,14 @@
+name = "ichikitsu-receipt-pocket"
+main = "worker.js"
+compatibility_date = "2026-01-09"
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "receipt-pocket-db"
+database_id = "aae04c83-7a78-4f29-8cbc-91e36d8ce6fc"
+
+# R2 Bucket Binding
+[[r2_buckets]]
+binding = "MY_BUCKET"
+bucket_name = "receipt-pocket-images"
