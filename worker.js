@@ -201,9 +201,9 @@ export default {
 
         const promptText = prompts[language] || prompts.ja;
 
-        // Gemini API を呼び出し (v1beta API と flash-latest モデルを使用)
+        // Gemini API を呼び出し (v1beta API と gemini-1.5-flash モデルを使用)
         const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
