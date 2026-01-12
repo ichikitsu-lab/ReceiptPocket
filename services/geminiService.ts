@@ -1,7 +1,9 @@
+import { SupportedLanguage } from '../i18n/aiPrompts';
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { aiPrompts, SupportedLanguage } from '../i18n/aiPrompts';
-
+/**
+ * 領収書画像を解析する（Cloudflare Worker 経由で Gemini API を呼び出す）
+ * これにより、APIキーがクライアントサイドに露出しない安全な設計になります
+ */
 export const analyzeReceipt = async (
   base64Data: string, 
   mimeType: string, 
@@ -9,44 +11,30 @@ export const analyzeReceipt = async (
   categories: string[],
   language: SupportedLanguage = 'ja'
 ): Promise<any> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const allowedCategories = categories.join(', ');
+  // Worker の /analyze エンドポイントを呼び出す
+  const workerUrl = process.env.SYNC_API_URL;
   
-  // 選択された言語のプロンプトを使用
-  const prompt = aiPrompts[language];
-  const promptText = prompt.systemPrompt.replace('{{categories}}', allowedCategories);
+  if (!workerUrl) {
+    throw new Error('SYNC_API_URL が設定されていません');
+  }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType: mimeType,
-            data: base64Data,
-          },
-        },
-        {
-          text: promptText
-        }
-      ]
+  const response = await fetch(`${workerUrl}/analyze`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          date: { type: Type.STRING, description: "YYYY-MM-DD" },
-          vendor: { type: Type.STRING },
-          amount: { type: Type.NUMBER },
-          category: { type: Type.STRING },
-          paymentMethod: { type: Type.STRING },
-          description: { type: Type.STRING, description: prompt.descriptionHint }
-        },
-        required: ["date", "vendor", "amount", "category", "paymentMethod", "description"]
-      }
-    }
+    body: JSON.stringify({
+      base64Data,
+      mimeType,
+      categories,
+      language
+    })
   });
 
-  return JSON.parse(response.text);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || '解析に失敗しました');
+  }
+
+  return await response.json();
 };

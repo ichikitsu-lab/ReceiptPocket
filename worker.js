@@ -154,6 +154,119 @@ export default {
       }
     }
 
+    // --- Gemini API を使った領収書解析エンドポイント ---
+    if (request.method === "POST" && url.pathname === "/analyze") {
+      try {
+        const { base64Data, mimeType, categories, language } = await request.json();
+        
+        // Worker の環境変数から Gemini API キーを取得
+        const apiKey = env.GEMINI_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ 
+            error: "GEMINI_API_KEY が設定されていません" 
+          }), { status: 500, headers: corsHeaders });
+        }
+
+        // 言語別のプロンプトを定義
+        const prompts = {
+          ja: `領収書/レシートの画像を解析し、以下のルールに従ってJSONで出力してください。
+1. categoryは必ず次のリストから最も適切なものを1つ選んでください: [${categories.join(', ')}]
+2. descriptionには、何を購入したか、どのような目的の支出かを推測して、20文字程度の簡潔なメモを日本語で作成してください。
+3. 出力項目: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`,
+          en: `Analyze the receipt/invoice image and output JSON according to the following rules:
+1. For category, select the most appropriate one from this list: [${categories.join(', ')}]
+2. For description, infer what was purchased and the purpose of the expense, then create a concise memo of about 20 words in English.
+3. Output fields: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`,
+          'zh-CN': `请分析收据/小票图像，并按照以下规则输出JSON格式：
+1. category必须从以下列表中选择最合适的一个: [${categories.join(', ')}]
+2. description请推测购买了什么、支出的目的，用简体中文创建约20字的简洁备注。
+3. 输出项目: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`,
+          'zh-TW': `請分析收據/小票圖像，並按照以下規則輸出JSON格式：
+1. category必須從以下列表中選擇最合適的一個: [${categories.join(', ')}]
+2. description請推測購買了什麼、支出的目的，用繁體中文創建約20字的簡潔備註。
+3. 輸出項目: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`,
+          de: `Analysieren Sie das Quittungs-/Rechnungsbild und geben Sie JSON gemäß den folgenden Regeln aus:
+1. Wählen Sie für category die am besten geeignete aus dieser Liste: [${categories.join(', ')}]
+2. Schließen Sie für description darauf, was gekauft wurde und den Zweck der Ausgabe, und erstellen Sie eine prägnante Notiz von etwa 20 Wörtern auf Deutsch.
+3. Ausgabefelder: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`,
+          es: `Analice la imagen del recibo/factura y genere JSON según las siguientes reglas:
+1. Para category, seleccione la más apropiada de esta lista: [${categories.join(', ')}]
+2. Para description, infiera qué se compró y el propósito del gasto, luego cree una nota concisa de aproximadamente 20 palabras en español.
+3. Campos de salida: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`,
+          it: `Analizzare l'immagine della ricevuta/fattura e generare JSON secondo le seguenti regole:
+1. Per category, selezionare la più appropriata da questo elenco: [${categories.join(', ')}]
+2. Per description, dedurre cosa è stato acquistato e lo scopo della spesa, quindi creare una nota concisa di circa 20 parole in italiano.
+3. Campi di output: date (YYYY-MM-DD), vendor, amount, category, paymentMethod, description`
+        };
+
+        const promptText = prompts[language] || prompts.ja;
+
+        // Gemini API を呼び出し
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  {
+                    inline_data: {
+                      mime_type: mimeType,
+                      data: base64Data
+                    }
+                  },
+                  { text: promptText }
+                ]
+              }],
+              generationConfig: {
+                response_mime_type: "application/json",
+                response_schema: {
+                  type: "object",
+                  properties: {
+                    date: { type: "string", description: "YYYY-MM-DD" },
+                    vendor: { type: "string" },
+                    amount: { type: "number" },
+                    category: { type: "string" },
+                    paymentMethod: { type: "string" },
+                    description: { type: "string" }
+                  },
+                  required: ["date", "vendor", "amount", "category", "paymentMethod", "description"]
+                }
+              }
+            })
+          }
+        );
+
+        if (!geminiResponse.ok) {
+          const errorText = await geminiResponse.text();
+          return new Response(JSON.stringify({ 
+            error: `Gemini API エラー: ${geminiResponse.status} - ${errorText}` 
+          }), { status: geminiResponse.status, headers: corsHeaders });
+        }
+
+        const geminiData = await geminiResponse.json();
+        
+        // Gemini のレスポンスから JSON を抽出
+        const resultText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!resultText) {
+          return new Response(JSON.stringify({ 
+            error: "Gemini API からの応答が不正です" 
+          }), { status: 500, headers: corsHeaders });
+        }
+
+        const parsedResult = JSON.parse(resultText);
+        
+        return new Response(JSON.stringify(parsedResult), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ 
+          error: `解析失敗: ${e.message}` 
+        }), { status: 500, headers: corsHeaders });
+      }
+    }
+
     return new Response("Receipt Pocket API", { headers: corsHeaders });
   }
 };
